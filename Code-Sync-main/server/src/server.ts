@@ -8,9 +8,12 @@ import { USER_CONNECTION_STATUS, User } from "./types/user";
 import { Server } from "socket.io";
 import path from "path";
 
-import UserModel from "./modals/User";
-import RoomModel from "./modals/Room";
 import DirectoryModel from "./modals/Directory";
+import DrawingModel from "./modals/Drawing"
+import FileModel from "./modals/File";
+import MessageModel from "./modals/Message";
+import RoomModel from "./modals/Room";
+import UserModel from "./modals/User";
 
 dotenv.config();
 
@@ -137,30 +140,32 @@ io.on("connection", (socket) => {
     }
   );
 
-  socket.on(SocketEvent.DIRECTORY_CREATED, ({ parentDirId, newDirectory }) => {
-    const roomId = getRoomId(socket.id);
-    if (!roomId) return;
+  socket.on(
+    SocketEvent.DIRECTORY_CREATED,
+    async ({ parentDirId, newDirectory }) => {
+      const roomId = getRoomId(socket.id);
+      if (!roomId) return;
 
-	const parentDir = await DirectoryModel.findById(parentDirId)
-	if (!parentDir) return
+      const parentDir = await DirectoryModel.findById(parentDirId);
+      if (!parentDir) return;
 
-	const createdDir = await DirectoryModel.create({
-		name: newDirectory.name,
-		children: [],
-		subDirectories: [],
-		parentDir: parentDirId,
-		roomId: parentDir.roomId,
-	})
+      const createdDir = await DirectoryModel.create({
+        name: newDirectory.name,
+        children: [],
+        subDirectories: [],
+        parentDir: parentDirId,
+        roomId: parentDir.roomId,
+      });
 
-	parentDir.subDirectories.push(createdDir._id)
-	await parentDir.save()
+      parentDir.subDirectories.push(createdDir._id);
+      await parentDir.save();
 
-
-    socket.broadcast.to(roomId).emit(SocketEvent.DIRECTORY_CREATED, {
-      parentDirId,
-      newDirectory,
-    });
-  });
+      socket.broadcast.to(roomId).emit(SocketEvent.DIRECTORY_CREATED, {
+        parentDirId,
+        newDirectory,
+      });
+    }
+  );
 
   socket.on(SocketEvent.DIRECTORY_UPDATED, ({ dirId, children }) => {
     const roomId = getRoomId(socket.id);
@@ -186,17 +191,34 @@ io.on("connection", (socket) => {
     socket.broadcast.to(roomId).emit(SocketEvent.DIRECTORY_DELETED, { dirId });
   });
 
-  socket.on(SocketEvent.FILE_CREATED, ({ parentDirId, newFile }) => {
+  socket.on(SocketEvent.FILE_CREATED, async ({ parentDirId, newFile }) => {
     const roomId = getRoomId(socket.id);
     if (!roomId) return;
+
+    const parentDir = await DirectoryModel.findById(parentDirId);
+    if (!parentDir) return;
+
+    const createdFile = await FileModel.create({
+      name: newFile.name,
+      content: newFile.content || "",
+      parentDir: parentDirId,
+      roomId: parentDir.roomId,
+    });
+
+    parentDir.children.push(createdFile._id);
+    await parentDir.save();
+
     socket.broadcast
       .to(roomId)
       .emit(SocketEvent.FILE_CREATED, { parentDirId, newFile });
   });
 
-  socket.on(SocketEvent.FILE_UPDATED, ({ fileId, newContent }) => {
+  socket.on(SocketEvent.FILE_UPDATED, async ({ fileId, newContent }) => {
     const roomId = getRoomId(socket.id);
     if (!roomId) return;
+
+    await FileModel.findByIdAndUpdate(fileId, { content: newContent });
+
     socket.broadcast.to(roomId).emit(SocketEvent.FILE_UPDATED, {
       fileId,
       newContent,
@@ -244,9 +266,16 @@ io.on("connection", (socket) => {
   });
 
   // Handle chat actions
-  socket.on(SocketEvent.SEND_MESSAGE, ({ message }) => {
+  socket.on(SocketEvent.SEND_MESSAGE, async ({ message }) => {
     const roomId = getRoomId(socket.id);
     if (!roomId) return;
+
+    await MessageModel.create({
+      roomId,
+      sender: message.id,
+      content: message.message,
+    });
+
     socket.broadcast.to(roomId).emit(SocketEvent.RECEIVE_MESSAGE, { message });
   });
 
@@ -291,9 +320,16 @@ io.on("connection", (socket) => {
       .emit(SocketEvent.SYNC_DRAWING, { drawingData });
   });
 
-  socket.on(SocketEvent.DRAWING_UPDATE, ({ snapshot }) => {
+  socket.on(SocketEvent.DRAWING_UPDATE, async ({ snapshot }) => {
     const roomId = getRoomId(socket.id);
     if (!roomId) return;
+
+	await DrawingModel.findOneAndUpdate(
+		{ roomId },
+		{ snapshot, updatedAt: new Date() },
+		{ upsert: true, new: true }
+	)
+
     socket.broadcast.to(roomId).emit(SocketEvent.DRAWING_UPDATE, {
       snapshot,
     });
