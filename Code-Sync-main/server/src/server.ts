@@ -3,15 +3,16 @@ import dotenv from "dotenv";
 import http from "http";
 import cors from "cors";
 import { SocketEvent, SocketId } from "./types/socket";
-import mongoose from "mongoose";
 import { USER_CONNECTION_STATUS, User } from "./types/user";
 import { Server } from "socket.io";
 import path from "path";
+import mongoose from "mongoose";
+import { v4 as uuidv4 } from "uuid";
 
-import DirectoryModel from "./modals/Directory";
-import DrawingModel from "./modals/Drawing"
 import FileModel from "./modals/File";
+import DirectoryModel from "./modals/Directory";
 import MessageModel from "./modals/Message";
+import DrawingModel from "./modals/Drawing";
 import RoomModel from "./modals/Room";
 import UserModel from "./modals/User";
 
@@ -27,7 +28,7 @@ app.use(express.static(path.join(__dirname, "public"))); // Serve static files
 
 mongoose
   .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/editor")
-  .then(() => console.log("MongoDB connected"))
+  .then(() => console.log("Connected to MongoDB"))
   .catch((err) => console.error("MongoDB connection error:", err));
 
 const server = http.createServer(app);
@@ -80,6 +81,44 @@ io.on("connection", (socket) => {
       return;
     }
 
+    const dbUser = await UserModel.create({
+      id: uuidv4(),
+      username,
+      roomId,
+      status: USER_CONNECTION_STATUS.ONLINE,
+      cursorPosition: 0,
+      typing: false,
+      socketId: socket.id,
+      currentFile: null,
+    });
+
+    // Find or create room
+    let room = await RoomModel.findOne({ id: roomId });
+    if (!room) {
+      const rootDirectory = await DirectoryModel.create({
+        id: uuidv4(),
+        name: "root",
+        children: [],
+        subDirectories: [],
+        parentDir: null,
+        roomId: null, // updated later
+      });
+      room = await RoomModel.create({
+        id: roomId,
+        users: [dbUser._id],
+        rootDirectory: rootDirectory._id,
+      });
+      await DirectoryModel.findOneAndUpdate(
+        { id: rootDirectory.id },
+        {
+          roomId: room._id,
+        }
+      );
+    } else {
+      room.users.push(dbUser._id);
+      await room.save();
+    }
+
     const user = {
       username,
       roomId,
@@ -89,29 +128,6 @@ io.on("connection", (socket) => {
       socketId: socket.id,
       currentFile: null,
     };
-    const dbUser = await UserModel.create(user);
-    let room = await RoomModel.findOne({ roomId });
-    if (!room) {
-      const rootDirectory = await DirectoryModel.create({
-        name: "root",
-        children: [],
-        subDirectories: [],
-        parentDir: null,
-        roomId: null, // updated later
-      });
-      room = await RoomModel.create({
-        roomId,
-        users: [dbUser._id],
-        rootDirectory: rootDirectory._id,
-      });
-      await DirectoryModel.findByIdAndUpdate(rootDirectory._id, {
-        roomId: room._id,
-      });
-    } else {
-      room.users.push(dbUser._id);
-      await room.save();
-    }
-
     userSocketMap.push(user);
     socket.join(roomId);
     socket.broadcast.to(roomId).emit(SocketEvent.USER_JOINED, { user });
@@ -146,10 +162,13 @@ io.on("connection", (socket) => {
       const roomId = getRoomId(socket.id);
       if (!roomId) return;
 
-      const parentDir = await DirectoryModel.findById(parentDirId);
+      const parentDir = await DirectoryModel.findOne({
+        parentDir: parentDirId,
+      });
       if (!parentDir) return;
 
       const createdDir = await DirectoryModel.create({
+        id: uuidv4(),
         name: newDirectory.name,
         children: [],
         subDirectories: [],
@@ -195,29 +214,30 @@ io.on("connection", (socket) => {
     const roomId = getRoomId(socket.id);
     if (!roomId) return;
 
-    const parentDir = await DirectoryModel.findById(parentDirId);
-    if (!parentDir) return;
+	const parentDir = await DirectoryModel.findOne({parentDir: parentDirId})
+	if (!parentDir) return
 
-    const createdFile = await FileModel.create({
-      name: newFile.name,
-      content: newFile.content || "",
-      parentDir: parentDirId,
-      roomId: parentDir.roomId,
-    });
+	const createdFile = await FileModel.create({
+		id: newFile.id,
+		name: newFile.name,
+		content: newFile.content || "",
+		parentDir: parentDirId,
+		roomId: parentDir.roomId,
+	})
 
-    parentDir.children.push(createdFile._id);
-    await parentDir.save();
+	parentDir.children.push(createdFile._id)
+	await parentDir.save()
 
     socket.broadcast
       .to(roomId)
       .emit(SocketEvent.FILE_CREATED, { parentDirId, newFile });
   });
 
-  socket.on(SocketEvent.FILE_UPDATED, async ({ fileId, newContent }) => {
+  socket.on(SocketEvent.FILE_UPDATED, async({ fileId, newContent }) => {
     const roomId = getRoomId(socket.id);
     if (!roomId) return;
 
-    await FileModel.findByIdAndUpdate(fileId, { content: newContent });
+	await FileModel.findOneAndUpdate({id: fileId}, { content: newContent })
 
     socket.broadcast.to(roomId).emit(SocketEvent.FILE_UPDATED, {
       fileId,
@@ -270,11 +290,13 @@ io.on("connection", (socket) => {
     const roomId = getRoomId(socket.id);
     if (!roomId) return;
 
-    await MessageModel.create({
-      roomId,
-      sender: message.id,
-      content: message.message,
-    });
+	await MessageModel.create({
+		id: uuidv4(),
+		roomId,
+		sender: message.sender,
+		content: message.content,
+		timestamp: new Date(),
+	})
 
     socket.broadcast.to(roomId).emit(SocketEvent.RECEIVE_MESSAGE, { message });
   });
