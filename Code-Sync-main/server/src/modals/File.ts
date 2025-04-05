@@ -1,9 +1,10 @@
 import mongoose from "mongoose"
 
 const fileSchema = new mongoose.Schema({
-	name: String,
+	id: { type: String, required: true },
+    name: String,
 	content: String,
-	parentDir: { type: mongoose.Schema.Types.ObjectId, ref: "Directory" },
+	parentDir: { type: String, default: null },
 	roomId: { type: mongoose.Schema.Types.ObjectId, ref: "Room" },
 })
 
