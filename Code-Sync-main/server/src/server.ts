@@ -140,6 +140,22 @@ io.on("connection", (socket) => {
   socket.on(SocketEvent.DIRECTORY_CREATED, ({ parentDirId, newDirectory }) => {
     const roomId = getRoomId(socket.id);
     if (!roomId) return;
+
+	const parentDir = await DirectoryModel.findById(parentDirId)
+	if (!parentDir) return
+
+	const createdDir = await DirectoryModel.create({
+		name: newDirectory.name,
+		children: [],
+		subDirectories: [],
+		parentDir: parentDirId,
+		roomId: parentDir.roomId,
+	})
+
+	parentDir.subDirectories.push(createdDir._id)
+	await parentDir.save()
+
+
     socket.broadcast.to(roomId).emit(SocketEvent.DIRECTORY_CREATED, {
       parentDirId,
       newDirectory,
