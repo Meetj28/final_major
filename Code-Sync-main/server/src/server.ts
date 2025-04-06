@@ -163,7 +163,7 @@ io.on("connection", (socket) => {
       if (!roomId) return;
 
       const parentDir = await DirectoryModel.findOne({
-        parentDir: parentDirId,
+        id: parentDirId,
       });
       if (!parentDir) return;
 
