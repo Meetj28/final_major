@@ -42,6 +42,7 @@ function SettingsView() {
             editor.style.fontFamily = `${fontFamily}, monospace`
         }
     }, [fontFamily])
+    console.log(showGitHubCorner);
 
     return (
         <div
