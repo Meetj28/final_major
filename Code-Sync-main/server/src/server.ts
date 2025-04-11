@@ -167,17 +167,17 @@ io.on("connection", (socket) => {
       });
       if (!parentDir) return;
 
-      const createdDir = await DirectoryModel.create({
-        id: uuidv4(),
-        name: newDirectory.name,
-        children: [],
-        subDirectories: [],
-        parentDir: parentDirId,
-        roomId: parentDir.roomId,
-      });
+        const createdDir = await DirectoryModel.create({
+          id: uuidv4(),
+          name: newDirectory.name,
+          children: [],
+          subDirectories: [],
+          parentDir: parentDirId,
+          roomId: parentDir.roomId,
+        });
 
-      parentDir.subDirectories.push(createdDir._id);
-      await parentDir.save();
+        parentDir.subDirectories.push(createdDir._id);
+        await parentDir.save();
 
       socket.broadcast.to(roomId).emit(SocketEvent.DIRECTORY_CREATED, {
         parentDirId,
@@ -214,30 +214,30 @@ io.on("connection", (socket) => {
     const roomId = getRoomId(socket.id);
     if (!roomId) return;
 
-	const parentDir = await DirectoryModel.findOne({parentDir: parentDirId})
-	if (!parentDir) return
+    const parentDir = await DirectoryModel.findOne({ parentDir: parentDirId })
+    if (!parentDir) return
 
-	const createdFile = await FileModel.create({
-		id: newFile.id,
-		name: newFile.name,
-		content: newFile.content || "",
-		parentDir: parentDirId,
-		roomId: parentDir.roomId,
-	})
+    const createdFile = await FileModel.create({
+      id: newFile.id,
+      name: newFile.name,
+      content: newFile.content || "",
+      parentDir: parentDirId,
+      roomId: parentDir.roomId,
+    })
 
-	parentDir.children.push(createdFile._id)
-	await parentDir.save()
+    parentDir.children.push(createdFile._id)
+    await parentDir.save()
 
     socket.broadcast
       .to(roomId)
       .emit(SocketEvent.FILE_CREATED, { parentDirId, newFile });
   });
 
-  socket.on(SocketEvent.FILE_UPDATED, async({ fileId, newContent }) => {
+  socket.on(SocketEvent.FILE_UPDATED, async ({ fileId, newContent }) => {
     const roomId = getRoomId(socket.id);
     if (!roomId) return;
 
-	await FileModel.findOneAndUpdate({id: fileId}, { content: newContent })
+    await FileModel.findOneAndUpdate({ id: fileId }, { content: newContent })
 
     socket.broadcast.to(roomId).emit(SocketEvent.FILE_UPDATED, {
       fileId,
@@ -290,13 +290,13 @@ io.on("connection", (socket) => {
     const roomId = getRoomId(socket.id);
     if (!roomId) return;
 
-	await MessageModel.create({
-		id: uuidv4(),
-		roomId,
-		sender: message.sender,
-		content: message.content,
-		timestamp: new Date(),
-	})
+    await MessageModel.create({
+      id: uuidv4(),
+      roomId,
+      sender: message.id,
+      content: message.message,
+      timestamp: new Date(),
+    })
 
     socket.broadcast.to(roomId).emit(SocketEvent.RECEIVE_MESSAGE, { message });
   });
@@ -346,11 +346,11 @@ io.on("connection", (socket) => {
     const roomId = getRoomId(socket.id);
     if (!roomId) return;
 
-	await DrawingModel.findOneAndUpdate(
-		{ roomId },
-		{ snapshot, updatedAt: new Date() },
-		{ upsert: true, new: true }
-	)
+    await DrawingModel.findOneAndUpdate(
+      { roomId },
+      { snapshot, updatedAt: new Date() },
+      { upsert: true, new: true }
+    )
 
     socket.broadcast.to(roomId).emit(SocketEvent.DRAWING_UPDATE, {
       snapshot,
